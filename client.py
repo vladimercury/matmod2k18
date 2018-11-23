@@ -1,59 +1,99 @@
-# Requirements: https://pypi.org/project/websocket-client/
 from websocket import create_connection
-import json
-import random
+from json import loads, dumps
+from sys import stderr
 
 
-def receive():
-    result = json.loads(ws.recv())
-    if result["state"]=="error":
-        print("Error: {}".format(result["error"]))
-        return None
-    return result
+class Client:
+    def __init__(self, logging=False):
+        self._url = "ws://dmc.alepoydes.com:3012"
+        self._logging = logging
 
+        self._socket = None
 
-def send(msg):
-    ws.send(json.dumps(msg))
+        self._error = None
+        self._name = None
+        self._state = None
+        self._version = None
+        self._user = None
 
+        self._result = {}
+        self._start()
 
-if __name__ == "__main__":
-    random.seed()
+    def _save_result(self, result):
+        is_dict = isinstance(result, dict)
+        self._result = result if is_dict else {}
+        self._state = result.get("state") if is_dict else None
+        self._error = result.get("error") if is_dict else None
+        if self._state == "info":
+            self._name = result.get("name")
+            self._version = result.get("version")
+        elif self._state == "access":
+            self._user = result.get("user")
 
-    print("Creating connection")
-    ws = create_connection("ws://212.71.248.74:3012")
+    def _start(self):
+        self._socket = create_connection(self._url)
 
-    print("Receiving game name.")
-    result = receive()
-    assert(result["state"]=="info")
-    print("Playing \"{}\", version {}".format(result["name"], result["version"]))
+        print("Starting...", end=" ")
+        self.receive()
+        print("started {} v{}".format(self._name, self._version))
 
-    print("Sending authorization")
-    send({"state":"login"})
-    result = receive()
-    if result is None:
-        print("Access denied")
-        exit(1)
-    assert(result["state"] == "access")
-    print("Logged as {}".format(result["user"]))
+        self._send({"state": "login"})
+        print("Logging in...", end=" ")
+        if self.receive() is None:
+            raise RuntimeError("Error logging in")
+        print("logged as", self._user)
+        return self
 
-    print("Waiting for server")
-    while True:
-        result = receive()
-        if result is None: continue
-        game = result["game"]
-        if result["state"]=="start":
-            print("New game {} as hand {}".format(game, result["hand"]))
-            print("Game parameters: {}".format(result["parameters"]))
-        elif result["state"]=="gameover":
-            print("Game {} is finished with scores {}".format(game,result["scores"]))
-            continue
-        elif result["state"]=="opponent":
-            print("Opponent {} have made move {}".format(result['opponent'], result["strategy"]))
-            pass
-        else: 
-            print("Unknown message: {}".format(result))
-            exit(1)
+    def _send(self, message):
+        self._socket.send(dumps(message))
 
-        move = random.choice([0, 1])
-        print("Making move {}".format(move))
-        send({"state":"move", "strategy": move, "game": game})
+    def receive(self):
+        result = loads(self._socket.recv())
+        self._save_result(result)
+        if self._state == "error":
+            print("Error: ", self._error, file=stderr)
+
+        return result
+
+    def send_move(self, move):
+        self._send({
+            "state": "move",
+            "strategy": move,
+            "game": self.game_id
+        })
+
+    @property
+    def game_id(self):
+        return self._result.get("game")
+
+    @property
+    def game_hand(self):
+        return self._result.get("hand")
+
+    @property
+    def game_moves(self):
+        return self._result.get("moves")
+
+    @property
+    def game_params(self):
+        return self._result.get("parameters")
+
+    @property
+    def game_scores(self):
+        return self._result.get("scores")
+
+    @property
+    def is_game_start(self):
+        return self._state == "start"
+
+    @property
+    def is_game_over(self):
+        return self._state == "gameover"
+
+    @property
+    def is_turn_over(self):
+        return self._state == "turnover"
+
+    @property
+    def state(self):
+        return self._state
