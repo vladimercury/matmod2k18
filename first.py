@@ -34,6 +34,7 @@ if __name__ == "__main__":
     if result is None:
         print("Access denied")
         exit(1)
+        
     assert(result["state"]=="access")
     print("Logged as {} {}".format(result["user"], "(debug)" if result["debug"] else "(release)"))
 

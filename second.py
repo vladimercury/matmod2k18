@@ -1,5 +1,6 @@
 # Requirements: https://pypi.org/project/websocket-client/
 from websocket import create_connection
+from math import ceil
 import json
 import random
 
@@ -10,20 +11,17 @@ LOGIN = "Как тебе такое, Илон Маск?"
 PASSWORD = "ysakci0g0sBqrtq29wbWy8pPZLGdS8Fw5FijNT2gRdpTSnvGpLfChq0kYgPgZv2a"
 DEBUG = False
 
-
 def receive():
     result = json.loads(ws.recv())
-    #  print("in:", result)
+  #  print("in:", result)
     if result["state"]=="error":
         print("Error: {}".format(result["error"]))
         return None
     return result
 
-
 def send(msg):
-    #  print("out:", msg)
+  #  print("out:", msg)
     ws.send(json.dumps(msg))
-
 
 if __name__ == "__main__":
     random.seed()
@@ -48,8 +46,9 @@ if __name__ == "__main__":
         isFirstTurn = False
         isFirstTurnDone = False
         eyeTurns = 0
-        isCompetitorRandom = False
-        numberOfRandomTurns = 10
+        isCompetitorRandomFriendly = True
+        isEyeInitialized = False
+        numberOfIdentificationTurns = 10
         numberOfBadRandomMoves = 0
         payMatrix = []
         isEyeBetter = False
@@ -77,23 +76,32 @@ if __name__ == "__main__":
             move = 1
             isFirstTurn = False
             isFirstTurnDone = True
-            numberOfRandomTurns -= 1
+            numberOfIdentificationTurns -= 1
         else:
-            numberOfRandomTurns -= 1
+            numberOfIdentificationTurns -= 1
             if isFirstTurnDone:
                 isFirstTurnDone = False
                 if result["moves"][competitor] == 0:
-                    isCompetitorRandom = True
-            move = result["moves"][competitor]
-            if numberOfRandomTurns > 0:
+                    isCompetitorRandomFriendly = False
+
+            if numberOfIdentificationTurns > 0:
+                move = result["moves"][competitor]
                 if move == 0:
                     numberOfBadRandomMoves += 1
-            if result["moves"][competitor] != result["moves"][myHand]:
-                eyeTurns += 1
+                if result["moves"][competitor] != result["moves"][myHand]:
+                    eyeTurns += 1
+                else:
+                    eyeTurns = 0
             else:
-                eyeTurns = 0
-            if numberOfBadRandomMoves >= 3:
-                move = 0
-            if eyeTurns >= 5 and not isEyeBetter:
-                move = 0
+                if numberOfBadRandomMoves >= 8:
+                    move = 0
+                elif ceil(eyeTurns) / 2 == numberOfBadRandomMoves and not isEyeBetter:
+                    move = 0
+                elif ceil(eyeTurns) / 2 < numberOfBadRandomMoves:
+                    move = 0
+                elif isEyeBetter and eyeTurns == 0 and not isEyeInitialized:
+                    isEyeInitialized = True
+                    move = 0
+                else:
+                    move = result["moves"][competitor]
         send({"state":"move", "strategy": move, "game": game})
